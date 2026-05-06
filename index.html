@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SU.線上報修系統 Pro Max</title>
+    
+    <!-- PWA 必備標籤 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#F2F2F7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <!-- 引入 Firebase Web SDK (Compat 版本) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+    <style>
+        :root {
+            --apple-bg: #F2F2F7;
+            --apple-sidebar: rgba(242, 242, 247, 0.6);
+            --apple-card: rgba(255, 255, 255, 0.75);
+            --apple-blue: #007AFF;
+            --apple-blue-hover: #0056b3;
+            --apple-red: #FF3B30;
+            --apple-green: #34C759;
+            --apple-orange: #FF9500;
+            --apple-text: #1C1C1E;
+            --apple-text-light: #8E8E93;
+            --apple-border: rgba(0, 0, 0, 0.08);
+            --shadow-sm: 0 4px 15px rgba(0,0,0,0.03);
+            --shadow-md: 0 10px 30px rgba(0,0,0,0.08);
+            --glass-blur: blur(25px);
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro TC", "Helvetica Neue", sans-serif;
+            background: radial-gradient(circle at 0% 0%, #ffecd2 0%, #fcb69f 30%, #e0c3fc 70%, #8ec5fc 100%);
+            color: var(--apple-text); margin: 0; padding: 0; height: 100vh; display: flex; overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .glass { background: var(--apple-card); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: var(--shadow-md); }
+
+        #login-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 1000; background: inherit; }
+        .login-box { width: 90%; max-width: 420px; padding: 40px 25px; border-radius: 30px; text-align: center; }
+        .login-box h1 { margin-top: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+
+        input, select, textarea { width: 100%; padding: 14px; margin-bottom: 15px; border: 1.5px solid transparent; border-radius: 12px; font-size: 16px; background: rgba(255,255,255,0.8); transition: all 0.3s ease; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); }
+        input:focus, select:focus, textarea:focus { outline: none; background: #FFF; border-color: var(--apple-blue); box-shadow: 0 0 0 4px rgba(0,122,255,0.15); }
+        
+        button { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: var(--apple-blue); color: white; margin-bottom: 10px; }
+        button:hover { background: var(--apple-blue-hover); transform: scale(0.98); }
+        button.secondary { background: rgba(0,0,0,0.05); color: var(--apple-text); }
+        button.secondary:hover { background: rgba(0,0,0,0.1); }
+        button.danger { background: var(--apple-red); color: white; }
+
+        #dashboard-view { display: flex; width: 100%; height: 100%; flex-direction: row; }
+        
+        /* 側邊欄 (桌機預設) */
+        .sidebar { width: 280px; height: 100%; padding: 30px 20px; border-right: 1px solid rgba(255,255,255,0.5); display: flex; flex-direction: column; gap: 8px; background: var(--apple-sidebar); backdrop-filter: var(--glass-blur); z-index: 10; }
+        .user-profile { text-align: center; margin-bottom: 30px; position: relative; }
+        .avatar-container { position: relative; display: inline-block; margin-bottom: 10px; cursor: pointer; }
+        .avatar { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, #007AFF, #5AC8FA); color: white; display: flex; justify-content: center; align-items: center; font-size: 32px; font-weight: bold; object-fit: cover; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.1); transition: 0.3s; }
+        .avatar-container:hover .avatar { filter: brightness(0.8); }
+        
+        .nav-item { padding: 12px 16px; border-radius: 10px; font-size: 15px; cursor: pointer; transition: 0.2s; font-weight: 500; color: var(--apple-text); display: flex; align-items: center; gap: 10px; }
+        .nav-item:hover { background: rgba(0,0,0,0.04); }
+        .nav-item.active { background: white; box-shadow: var(--shadow-sm); color: var(--apple-blue); font-weight: 600; }
+
+        .main-content { flex: 1; padding: 30px; overflow-y: auto; background: transparent; width: 100%; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-wrap: wrap; gap: 15px; }
+        .header h2 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+        
+        .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; padding: 15px; border-radius: 16px; }
+        .toolbar select, .toolbar input { width: auto; margin: 0; padding: 10px; border-radius: 10px; font-size: 14px; }
+        .toolbar button { width: auto; padding: 10px 15px; margin: 0; border-radius: 10px; font-size: 14px; }
+
+        .table-container { border-radius: 16px; overflow-x: auto; background: rgba(255,255,255,0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.8); box-shadow: var(--shadow-sm); }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
+        th, td { padding: 15px; text-align: left; font-size: 14px; border-bottom: 1px solid var(--apple-border); }
+        th { background: rgba(255,255,255,0.5); color: var(--apple-text-light); font-weight: 600; text-transform: uppercase; font-size: 12px; }
+        tbody tr { transition: background 0.2s; }
+        tbody tr:nth-child(odd) { background-color: rgba(255,255,255,0.8); }
+        tbody tr:nth-child(even) { background-color: rgba(249,249,251,0.8); }
+        tbody tr:hover { background-color: white; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        
+        .badge { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; white-space: nowrap; }
+        .badge.status-尚未處理 { background: #E5E5EA; color: #1C1C1E; }
+        .badge.status-處理中 { background: #E1F0FF; color: var(--apple-blue); }
+        .badge.status-需較長時間處理 { background: #FFF0E5; color: var(--apple-orange); }
+        .badge.status-已結案 { background: #E5F9E7; color: var(--apple-green); }
+        .badge.status-無法處理 { background: #FFE5E5; color: var(--apple-red); }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; z-index: 2000; opacity: 0; visibility: hidden; transition: 0.3s ease; }
+        .modal-overlay.active { opacity: 1; visibility: visible; }
+        .modal { background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); border-radius: 20px; width: 600px; max-width: 95%; padding: 25px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto; transform: translateY(20px); transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .modal-overlay.active .modal { transform: translateY(0); }
+        .hidden { display: none !important; }
+
+        .chat-container { background: rgba(0,0,0,0.03); border-radius: 12px; padding: 15px; max-height: 250px; overflow-y: auto; margin-bottom: 15px; border: 1px solid var(--apple-border); }
+        .chat-bubble { padding: 10px 14px; border-radius: 18px; margin-bottom: 10px; font-size: 14px; max-width: 85%; width: fit-content; clear: both; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .chat-user { background: var(--apple-blue); color: white; border-bottom-right-radius: 4px; float: right; }
+        .chat-admin { background: white; color: var(--apple-text); border: 1px solid var(--apple-border); border-bottom-left-radius: 4px; float: left; }
+        .chat-info { font-size: 11px; opacity: 0.8; margin-bottom: 4px; font-weight: 500; }
+        .clearfix::after { content: ""; display: table; clear: both; }
+
+        #global-loader { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(255,255,255,0.8); backdrop-filter: blur(5px); display: flex; justify-content: center; align-items: center; z-index: 9999; font-size: 18px; font-weight: bold; color: var(--apple-blue); }
+
+        /* ================= 手機版 RWD 適配 ================= */
+        @media (max-width: 768px) {
+            #dashboard-view { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; padding: 15px; flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--apple-border); justify-content: center; gap: 5px; }
+            .user-profile { width: 100%; display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px; }
+            .user-profile h3, .user-profile .badge { margin: 0; }
+            .avatar { width: 50px; height: 50px; font-size: 20px; }
+            .avatar-container::after { display: none; }
+            .nav-item { padding: 8px 12px; font-size: 13px; flex: 1 1 auto; justify-content: center; text-align: center; }
+            .sidebar > button { flex: 1 1 100%; margin-top: 5px; }
+            .main-content { padding: 15px; height: calc(100vh - 180px); }
+            .toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+            .toolbar select, .toolbar button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="global-loader" class="hidden">同步處理中，請稍候...</div>
+
+    <!-- 1. 登入/註冊畫面 -->
+    <div id="login-view">
+        <div class="login-box glass">
+            <h1>SU.線上報修系統 <span style="color:var(--apple-blue)">PWA</span></h1>
+            <p style="color:var(--apple-text-light); margin-bottom:20px; font-size: 14px;">企業級雲端版</p>
+            
+            <div id="form-login">
+                <input type="text" id="login-username" placeholder="帳號" onkeypress="if(event.key==='Enter') app.login()" autocorrect="off" autocapitalize="off">
+                <input type="password" id="login-password" placeholder="密碼" onkeypress="if(event.key==='Enter') app.login()">
+                <button onclick="app.login()">登入系統</button>
+                <button class="secondary" onclick="app.toggleAuthMode()">註冊新帳號</button>
+            </div>
+
+            <div id="form-register" class="hidden">
+                <input type="text" id="reg-username" placeholder="設定帳號 (3-20字元)" autocorrect="off" autocapitalize="off">
+                <input type="password" id="reg-password" placeholder="設定密碼 (至少4字元)">
+                <input type="text" id="reg-name" placeholder="真實姓名">
+                <button onclick="app.register()">確認註冊</button>
+                <button class="secondary" onclick="app.toggleAuthMode()">返回登入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 主儀表板 -->
+    <div id="dashboard-view" class="hidden">
+        <div class="sidebar">
+            <div class="user-profile">
+                <div class="avatar-container" onclick="document.getElementById('avatar-upload').click()">
+                    <img id="nav-avatar-img" class="avatar hidden" src="" alt="Avatar">
+                    <div id="nav-avatar-text" class="avatar">A</div>
+                </div>
+                <input type="file" id="avatar-upload" class="hidden" accept="image/*" onchange="app.updateAvatar(event)">
+                <div>
+                    <h3 style="font-size:18px;" id="nav-name">管理員</h3>
+                    <span class="badge" style="background:rgba(0,0,0,0.05); margin-top:5px;" id="nav-role">admin</span>
+                </div>
+            </div>
+            
+            <div class="nav-item active" id="menu-my-reports" onclick="app.switchTab('my-reports')">📝 我的報修</div>
+            <div class="nav-item hidden" id="menu-all-reports" onclick="app.switchTab('all-reports')">📂 管理報修</div>
+            <div class="nav-item hidden" id="menu-accounts" onclick="app.switchTab('accounts')">👥 帳號管理</div>
+            <div class="nav-item hidden" id="menu-logs" onclick="app.switchTab('logs')">📋 系統日誌</div>
+            
+            <div style="flex:1"></div>
+            <button class="secondary" onclick="app.logout()" style="background:rgba(255,59,48,0.1); color:var(--apple-red); border-radius:10px;">登出系統</button>
+        </div>
+
+        <div class="main-content">
+            <div class="header">
+                <h2 id="page-title">我的報修單</h2>
+                <button onclick="app.showModal('modal-submit')" style="width:auto; border-radius: 20px; padding: 10px 20px;">+ 申請新報修單</button>
+            </div>
+
+            <div class="toolbar glass">
+                <select id="filter-year" onchange="app.renderTable()"><option value="全部">全部年份</option></select>
+                <select id="filter-status" onchange="app.renderTable()">
+                    <option value="全部">所有狀態</option>
+                    <option value="尚未處理">尚未處理</option>
+                    <option value="處理中">處理中</option>
+                    <option value="需較長時間處理">需較長時間處理</option>
+                    <option value="已結案">已結案</option>
+                    <option value="無法處理">無法處理</option>
+                </select>
+                <select id="filter-type" class="hidden" onchange="app.renderTable()">
+                    <option value="全部">所有類型</option>
+                    <option value="資訊類">資訊類</option>
+                    <option value="行政總務類">行政總務類</option>
+                </select>
+            </div>
+
+            <div class="table-container" id="view-reports">
+                <table>
+                    <thead><tr><th>單號</th><th>狀態更新時間</th><th>類型</th><th>問題描述</th><th>發生地點</th><th>附件</th><th>目前狀態</th><th>最新回覆</th></tr></thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+
+            <div class="table-container hidden" id="view-accounts">
+                <table>
+                    <thead><tr><th>大頭貼</th><th>帳號</th><th>姓名</th><th>角色</th><th>操作</th></tr></thead>
+                    <tbody id="accounts-body"></tbody>
+                </table>
+            </div>
+
+            <div class="table-container hidden" id="view-logs">
+                <table>
+                    <thead><tr><th>記錄時間</th><th>操作人</th><th>單號</th><th>動作類型</th><th>詳細資訊</th></tr></thead>
+                    <tbody id="logs-body"></tbody>
+                </table>
+            </div>
+
+            <div class="pagination" style="display: flex; justify-content: center; gap: 15px; margin-top: 20px;">
+                <button class="secondary" onclick="app.prevPage()">上一頁</button>
+                <span id="page-info" style="font-weight: 500; align-self: center;">第 1 頁</span>
+                <button class="secondary" onclick="app.nextPage()">下一頁</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Modals 彈出視窗 -->
+    <div id="modal-submit" class="modal-overlay">
+        <div class="modal">
+            <h3>📝 申請新的報修單</h3>
+            <label style="font-size: 13px; font-weight: 600; color:var(--apple-text-light);">報修類型</label>
+            <select id="sub-type"><option value="資訊類">資訊類</option><option value="行政總務類">行政總務類</option></select>
+            <label style="font-size: 13px; font-weight: 600; color:var(--apple-text-light);">發生地點</label>
+            <input type="text" id="sub-location" placeholder="例如：三樓會議室" maxlength="15">
+            <label style="font-size: 13px; font-weight: 600; color:var(--apple-text-light);">異常描述</label>
+            <textarea id="sub-issue" rows="3" placeholder="請詳述遇到的問題"></textarea>
+            <label style="font-size: 13px; font-weight: 600; color:var(--apple-text-light);">備註事項</label>
+            <input type="text" id="sub-remarks" placeholder="可填寫需留意事項">
+            <label style="font-size: 13px; font-weight: 600; color:var(--apple-text-light);">上傳附件</label>
+            <input type="file" id="sub-file" accept="image/png, image/jpeg, image/jpg" style="padding: 10px; background:transparent; border:1px dashed var(--apple-blue);">
+            <button onclick="app.submitReport()">提交報修單</button>
+            <button class="secondary" onclick="app.hideModal('modal-submit')">取消</button>
+        </div>
+    </div>
+
+    <div id="modal-detail" class="modal-overlay">
+        <div class="modal">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                <h3 style="margin:0;">🔍 單號 <span id="detail-id" style="color:var(--apple-blue)"></span></h3>
+                <button id="btn-delete-report" class="danger hidden" style="width:auto; padding:6px 12px; margin:0; border-radius:8px; font-size:13px;" onclick="app.promptDeleteReport()">刪除</button>
+            </div>
+            
+            <div style="background:rgba(0,0,0,0.02); padding:15px; border-radius:12px; margin-bottom:15px; font-size:14px; border: 1px solid var(--apple-border);">
+                <p style="margin:0 0 8px 0;"><strong>申請人：</strong><span id="detail-user"></span></p>
+                <p style="margin:0 0 8px 0;"><strong>狀態：</strong><span id="detail-status-badge"></span> <span style="color:var(--apple-text-light); font-size:12px;" id="detail-status-time"></span></p>
+                <p style="margin:0 0 8px 0;"><strong>地點：</strong><span id="detail-location"></span></p>
+                <p style="margin:0 0 8px 0;"><strong>描述：</strong><span id="detail-issue"></span></p>
+                <p style="margin:0 0 8px 0;"><strong>備註：</strong><span id="detail-remarks"></span></p>
+                <div id="detail-image" style="margin-top:10px;"></div>
+            </div>
+            
+            <div class="chat-container clearfix" id="chat-box"></div>
+
+            <div style="margin-top:15px;">
+                <div id="admin-update-section" class="hidden" style="margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid var(--apple-border);">
+                    <label style="font-size: 13px; font-weight: 600; color:var(--apple-text-light);">管理員操作：變更案件狀態</label>
+                    <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                        <select id="update-status" style="margin-bottom:0; flex:1; min-width: 150px;">
+                            <option value="尚未處理">尚未處理</option>
+                            <option value="處理中">處理中</option>
+                            <option value="需較長時間處理">需較長時間處理</option>
+                            <option value="已結案">已結案</option>
+                            <option value="無法處理">無法處理</option>
+                        </select>
+                        <button onclick="app.promptForStatusUpdate()" style="width:auto; margin-bottom:0; flex:1;">更新狀態</button>
+                    </div>
+                </div>
+                <label style="font-size: 13px; font-weight: 600; color:var(--apple-text-light);">新增留言 / 補充說明</label>
+                <textarea id="new-reply" rows="2" placeholder="輸入留言內容..." style="margin-bottom:10px;"></textarea>
+                <button onclick="app.addReply()" style="background:var(--apple-green);">送出留言</button>
+            </div>
+            <button class="secondary" onclick="app.hideModal('modal-detail')">關閉</button>
+        </div>
+    </div>
+
+    <!-- 密碼確認專用 Modal -->
+    <div id="modal-pwd-confirm" class="modal-overlay">
+        <div class="modal" style="width: 350px; text-align: center;">
+            <h3 style="margin-bottom: 10px;">🔐 安全驗證</h3>
+            <p style="color:var(--apple-text-light); margin-bottom:20px; font-size:14px;" id="pwd-confirm-msg">請輸入您的密碼以確認此操作</p>
+            <input type="password" id="confirm-pwd-input" placeholder="輸入密碼" onkeypress="if(event.key==='Enter') app.executePwdAction()">
+            <button onclick="app.executePwdAction()">確認</button>
+            <button class="secondary" onclick="app.hideModal('modal-pwd-confirm')">取消</button>
+        </div>
+    </div>
+
+<script>
+/**
+ * 註冊 PWA Service Worker
+ */
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('Service Worker 註冊成功'))
+            .catch(err => console.error('Service Worker 註冊失敗:', err));
+    });
+}
+
+/**
+ * ==========================================
+ * 1. 系統組態設定 (請在此填入您的 API Keys)
+ * ==========================================
+ */
+const IMGBB_API_KEY = "19b6d6a348ceb1d7e2715d3a0522275e";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDePNNfXiusT72r9V6jxHZ9B7LMBNiJOfE",
+  authDomain: "su-repair-reporting-system.firebaseapp.com",
+  projectId: "su-repair-reporting-system",
+  storageBucket: "su-repair-reporting-system.firebasestorage.app",
+  messagingSenderId: "970173338049",
+  appId: "1:970173338049:web:ac445e70081e04126edf40",
+  measurementId: "G-4Z6VTYM91D"
+};
+
+// 初始化 Firebase 與 Firestore
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/**
+ * ==========================================
+ * 2. 系統核心架構 App
+ * ==========================================
+ */
+const app = {
+    currentUser: null,
+    allUsers: {},
+    allReports: {},
+    allLogs: {},
+    
+    currentTab: 'my-reports',
+    currentPage: 0,
+    itemsPerPage: 10,
+    filteredReports: [],
+    selectedReportId: null,
+    pendingAction: null,
+    unsubscribeListeners: [], 
+
+    init() {
+        this.populateYearFilter();
+        this.checkInitialAdmin();
+
+        const unsubUsers = db.collection('users').onSnapshot(snap => {
+            this.allUsers = {};
+            snap.forEach(doc => this.allUsers[doc.id] = doc.data());
+            if(this.currentTab === 'accounts') this.renderAccounts();
+            if(this.currentUser) this.renderSidebarProfile(); 
+        });
+
+        const unsubReports = db.collection('reports').onSnapshot(snap => {
+            this.allReports = {};
+            snap.forEach(doc => this.allReports[doc.id] = doc.data());
+            if(!document.getElementById('modal-detail').classList.contains('active')) {
+                this.renderTable();
+            } else if (this.selectedReportId && this.allReports[this.selectedReportId]) {
+                const updatedReport = this.allReports[this.selectedReportId];
+                this.renderChatBox(updatedReport.replies || []);
+            }
+        });
+
+        const unsubLogs = db.collection('admin_logs').onSnapshot(snap => {
+            this.allLogs = {};
+            snap.forEach(doc => this.allLogs[doc.id] = doc.data());
+            if(this.currentTab === 'logs') this.renderLogs();
+        });
+
+        this.unsubscribeListeners = [unsubUsers, unsubReports, unsubLogs];
+    },
+
+    async checkInitialAdmin() {
+        const adminDoc = await db.collection('users').doc('admin').get();
+        if (!adminDoc.exists) {
+            await db.collection('users').doc('admin').set({
+                password: "This1234", role: "admin", chinese_name: "最高管理員", sessions: [], avatar: null
+            });
+        }
+    },
+
+    setLoading(isLoading) { document.getElementById('global-loader').classList.toggle('hidden', !isLoading); },
+    toggleAuthMode() { document.getElementById('form-login').classList.toggle('hidden'); document.getElementById('form-register').classList.toggle('hidden'); },
+
+    async login() {
+        const u = document.getElementById('login-username').value.trim();
+        const p = document.getElementById('login-password').value;
+        if (!u || !p) return alert("請輸入帳號密碼");
+        
+        this.setLoading(true);
+        const doc = await db.collection('users').doc(u).get();
+        this.setLoading(false);
+
+        if (doc.exists && doc.data().password === p) {
+            this.currentUser = { username: u, ...doc.data() };
+            this.showDashboard();
+        } else {
+            alert("❌ 帳號或密碼錯誤！");
+        }
+    },
+
+    async register() {
+        const u = document.getElementById('reg-username').value.trim();
+        const p = document.getElementById('reg-password').value;
+        const n = document.getElementById('reg-name').value.trim();
+        
+        if(u.length < 3 || p.length < 4 || !n) return alert("❌ 格式錯誤：帳號至少3碼，密碼至少4碼，姓名不可為空。");
+        
+        this.setLoading(true);
+        const doc = await db.collection('users').doc(u).get();
+        if (doc.exists) {
+            this.setLoading(false);
+            return alert("❌ 此帳號已存在！");
+        }
+
+        await db.collection('users').doc(u).set({ password: p, role: "USER", chinese_name: n, sessions: [], avatar: null });
+        this.setLoading(false);
+        alert("✅ 註冊成功，請登入！");
+        this.toggleAuthMode();
+    },
+
+    logout() {
+        this.currentUser = null;
+        document.getElementById('dashboard-view').classList.add('hidden');
+        document.getElementById('login-view').classList.remove('hidden');
+        document.getElementById('login-password').value = '';
+    },
+
+    showDashboard() {
+        document.getElementById('login-view').classList.add('hidden');
+        document.getElementById('dashboard-view').classList.remove('hidden');
+        
+        this.renderSidebarProfile();
+
+        const role = this.currentUser.role;
+        const isAdminType = ['admin', 'MIS', 'GA'].includes(role);
+        
+        document.getElementById('menu-all-reports').classList.toggle('hidden', !isAdminType);
+        document.getElementById('menu-accounts').classList.toggle('hidden', role !== 'admin');
+        document.getElementById('menu-logs').classList.toggle('hidden', role !== 'admin');
+        document.getElementById('filter-type').classList.toggle('hidden', role !== 'admin');
+
+        this.switchTab(role === 'USER' ? 'my-reports' : 'all-reports');
+    },
+
+    renderSidebarProfile() {
+        if(!this.currentUser) return;
+        const latestUserData = this.allUsers[this.currentUser.username] || this.currentUser;
+
+        document.getElementById('nav-name').innerText = latestUserData.chinese_name;
+        document.getElementById('nav-role').innerText = latestUserData.role;
+        
+        const imgEl = document.getElementById('nav-avatar-img');
+        const txtEl = document.getElementById('nav-avatar-text');
+        
+        if (latestUserData.avatar) {
+            imgEl.src = latestUserData.avatar;
+            imgEl.classList.remove('hidden');
+            txtEl.classList.add('hidden');
+        } else {
+            imgEl.classList.add('hidden');
+            txtEl.classList.remove('hidden');
+            txtEl.innerText = latestUserData.chinese_name.charAt(0);
+        }
+    },
+
+    async uploadToImgBB(file) {
+        const formData = new FormData();
+        formData.append('image', file);
+        try {
+            const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if(data.success) return data.data.url;
+            throw new Error(data.error.message);
+        } catch (e) {
+            alert("上傳圖片失敗，請檢查網路連線。");
+            return null;
+        }
+    },
+
+    async updateAvatar(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) return alert("❌ 圖片請勿超過 2MB");
+
+        this.setLoading(true);
+        const imageUrl = await this.uploadToImgBB(file);
+        if (imageUrl) {
+            await db.collection('users').doc(this.currentUser.username).update({ avatar: imageUrl });
+            this.currentUser.avatar = imageUrl;
+            alert("✅ 大頭貼更新成功！");
+        }
+        this.setLoading(false);
+        e.target.value = '';
+    },
+
+    switchTab(tab) {
+        this.currentTab = tab;
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        document.getElementById(`menu-${tab}`).classList.add('active');
+
+        ['view-reports', 'view-accounts', 'view-logs'].forEach(id => document.getElementById(id).classList.add('hidden'));
+        document.querySelector('.toolbar').classList.add('hidden');
+        document.querySelector('.pagination').classList.add('hidden');
+
+        if (tab === 'accounts') {
+            document.getElementById('page-title').innerText = "帳號管理";
+            document.getElementById('view-accounts').classList.remove('hidden');
+            this.renderAccounts();
+        } else if (tab === 'logs') {
+            document.getElementById('page-title').innerText = "系統操作日誌";
+            document.getElementById('view-logs').classList.remove('hidden');
+            this.renderLogs();
+        } else {
+            document.getElementById('page-title').innerText = tab === 'my-reports' ? "我的報修單" : "管理報修單";
+            document.getElementById('view-reports').classList.remove('hidden');
+            document.querySelector('.toolbar').classList.remove('hidden');
+            document.querySelector('.pagination').classList.remove('hidden');
+            this.currentPage = 0;
+            this.renderTable();
+        }
+    },
+
+    populateYearFilter() {
+        const yearSelect = document.getElementById('filter-year');
+        const currentYear = new Date().getFullYear();
+        for(let i=0; i<3; i++) {
+            const opt = document.createElement('option');
+            opt.value = currentYear - i;
+            opt.innerText = `${currentYear - i}年`;
+            yearSelect.appendChild(opt);
+        }
+    },
+
+    loadFilteredReports() {
+        const reportsArr = Object.values(this.allReports);
+        const role = this.currentUser.role;
+        const fYear = document.getElementById('filter-year').value;
+        const fStatus = document.getElementById('filter-status').value;
+        const fType = document.getElementById('filter-type').value;
+
+        this.filteredReports = reportsArr.filter(r => {
+            if (this.currentTab === 'my-reports' && r.username !== this.currentUser.username) return false;
+            if (this.currentTab === 'all-reports') {
+                if (role === 'MIS' && r.type !== '資訊類') return false;
+                if (role === 'GA' && r.type !== '行政總務類') return false;
+            }
+            if (fYear !== '全部' && !r.timestamp.startsWith(fYear)) return false;
+            if (fStatus !== '全部' && r.status !== fStatus) return false;
+            if (fType !== '全部' && r.type !== fType) return false;
+            return true;
+        });
+
+        this.filteredReports.sort((a,b) => new Date(b.last_update_time) - new Date(a.last_update_time));
+    },
+
+    renderTable() {
+        this.loadFilteredReports();
+        const tbody = document.getElementById('table-body');
+        tbody.innerHTML = '';
+
+        const start = this.currentPage * this.itemsPerPage;
+        const pageData = this.filteredReports.slice(start, start + this.itemsPerPage);
+
+        pageData.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.onclick = () => this.openReportDetail(r.report_id);
+            
+            const badgeClass = `badge status-${r.status}`;
+            const replyList = r.replies || [];
+            const replyText = replyList.length > 0 ? replyList[replyList.length-1].content.substring(0,10)+'...' : '-';
+            const imgHtml = r.attachments && r.attachments.length > 0 ? `🖼️ 有附件` : '-';
+
+            tr.innerHTML = `
+                <td><strong>${r.report_id}</strong></td>
+                <td><span style="font-size:12px; color:var(--apple-text-light)">${r.last_update_time.substring(5,16)}</span></td>
+                <td>${r.type}</td>
+                <td>${r.issue.length > 15 ? r.issue.substring(0,15)+'...' : r.issue}</td>
+                <td>${r.location || '-'}</td>
+                <td>${imgHtml}</td>
+                <td><span class="${badgeClass}">${r.status}</span></td>
+                <td>${replyText}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('page-info').innerText = `第 ${this.currentPage + 1} 頁 / 共 ${Math.ceil(this.filteredReports.length / this.itemsPerPage) || 1} 頁`;
+    },
+
+    prevPage() { if(this.currentPage > 0) { this.currentPage--; this.renderTable(); } },
+    nextPage() { if((this.currentPage + 1) * this.itemsPerPage < this.filteredReports.length) { this.currentPage++; this.renderTable(); } },
+
+    async submitReport() {
+        const type = document.getElementById('sub-type').value;
+        const loc = document.getElementById('sub-location').value.trim();
+        const issue = document.getElementById('sub-issue').value.trim();
+        const remarks = document.getElementById('sub-remarks').value.trim();
+        const fileInput = document.getElementById('sub-file');
+
+        if(!issue) return alert("❌ 異常描述不可為空！");
+
+        this.setLoading(true);
+        let attachments = [];
+        if (fileInput.files.length > 0) {
+            if (fileInput.files[0].size > 5 * 1024 * 1024) { this.setLoading(false); return alert("❌ 附件不可超過5MB！"); }
+            const imgUrl = await this.uploadToImgBB(fileInput.files[0]);
+            if(imgUrl) attachments.push(imgUrl);
+        }
+
+        try {
+            const counterRef = db.collection('counters').doc('report_counter');
+            const newIdNum = await db.runTransaction(async (transaction) => {
+                const doc = await transaction.get(counterRef);
+                let current = 1;
+                if (doc.exists) current = doc.data().count + 1;
+                transaction.set(counterRef, { count: current });
+                return current;
+            });
+
+            const reportId = `SU${String(newIdNum).padStart(7, '0')}`;
+            const now = new Date().toLocaleString('sv-SE').replace('T', ' ');
+
+            await db.collection('reports').doc(reportId).set({
+                report_id: reportId, username: this.currentUser.username, type: type, location: loc,
+                issue: issue, remarks: remarks, attachments: attachments, timestamp: now, status: "尚未處理",
+                replies: [], status_updates: [{timestamp: now, status: "尚未處理"}], last_update_time: now
+            });
+
+            this.setLoading(false);
+            alert("✅ 報修單申請成功！");
+            
+            document.getElementById('sub-issue').value = '';
+            document.getElementById('sub-location').value = '';
+            document.getElementById('sub-remarks').value = '';
+            fileInput.value = '';
+            this.hideModal('modal-submit');
+
+        } catch (error) {
+            console.error("交易失敗", error);
+            this.setLoading(false);
+            alert("系統繁忙，請重試！");
+        }
+    },
+
+    openReportDetail(reportId) {
+        this.selectedReportId = reportId;
+        const r = this.allReports[reportId];
+        if(!r) return;
+
+        document.getElementById('detail-id').innerText = r.report_id;
+        document.getElementById('detail-user').innerText = `${this.allUsers[r.username]?.chinese_name || r.username}`;
+        document.getElementById('detail-status-badge').className = `badge status-${r.status}`;
+        document.getElementById('detail-status-badge').innerText = r.status;
+        document.getElementById('detail-status-time').innerText = `(${r.last_update_time.substring(5,16)})`;
+        document.getElementById('detail-location').innerText = r.location || '無';
+        document.getElementById('detail-issue').innerText = r.issue;
+        document.getElementById('detail-remarks').innerText = r.remarks || '無';
+
+        const imgDiv = document.getElementById('detail-image');
+        if(r.attachments && r.attachments.length > 0) {
+            imgDiv.innerHTML = `<img src="${r.attachments[0]}" style="max-width:100%; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.1);">`;
+        } else { imgDiv.innerHTML = ''; }
+
+        this.renderChatBox(r.replies || []);
+
+        const updateSec = document.getElementById('admin-update-section');
+        const delBtn = document.getElementById('btn-delete-report');
+        
+        if (['admin', 'MIS', 'GA'].includes(this.currentUser.role)) {
+            updateSec.classList.remove('hidden');
+            document.getElementById('update-status').value = r.status;
+        } else { updateSec.classList.add('hidden'); }
+
+        if (this.currentUser.role === 'admin') delBtn.classList.remove('hidden');
+        else delBtn.classList.add('hidden');
+
+        document.getElementById('new-reply').value = '';
+        this.showModal('modal-detail');
+    },
+
+    renderChatBox(replies) {
+        const chatBox = document.getElementById('chat-box');
+        if (replies.length === 0) {
+            chatBox.innerHTML = '<div style="text-align:center; color:var(--apple-text-light); font-size:13px; margin-top:20px;">尚無留言紀錄</div>';
+            return;
+        }
+
+        let html = '';
+        replies.forEach(reply => {
+            const isMe = reply.author === this.currentUser.username;
+            const bubbleClass = isMe ? 'chat-user' : 'chat-admin';
+            const replyUser = this.allUsers[reply.author];
+            const authorNameStr = replyUser?.chinese_name || reply.author_name;
+            const avatarContent = (replyUser && replyUser.avatar) 
+                ? `<img src="${replyUser.avatar}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">`
+                : `<div style="width:30px; height:30px; border-radius:50%; background:#ccc; color:white; display:flex; justify-content:center; align-items:center; font-weight:bold;">${authorNameStr.charAt(0)}</div>`;
+
+            if (isMe) {
+                html += `<div style="display:flex; gap:10px; flex-direction:row-reverse; margin-bottom:12px;">${avatarContent}<div class="chat-bubble ${bubbleClass}"><div class="chat-info" style="text-align:right;">我 • ${reply.timestamp.substring(5,16)}</div><div>${reply.content.replace(/\n/g, '<br>')}</div></div></div><div class="clearfix"></div>`;
+            } else {
+                html += `<div style="display:flex; gap:10px; margin-bottom:12px;">${avatarContent}<div class="chat-bubble ${bubbleClass}"><div class="chat-info">${authorNameStr} (${reply.role}) • ${reply.timestamp.substring(5,16)}</div><div>${reply.content.replace(/\n/g, '<br>')}</div></div></div><div class="clearfix"></div>`;
+            }
+        });
+        chatBox.innerHTML = html;
+        chatBox.scrollTop = chatBox.scrollHeight;
+    },
+
+    async logAdminAction(action, details) {
+        if (this.currentUser.role !== 'admin') return;
+        const now = new Date().toLocaleString('sv-SE').replace('T', ' ');
+        await db.collection('admin_logs').add({
+            timestamp: now, admin_user: this.currentUser.username, report_id: this.selectedReportId, action: action, details: details
+        });
+    },
+
+    async addReply() {
+        const content = document.getElementById('new-reply').value.trim();
+        if (!content) return alert("❌ 留言不可為空！");
+
+        const now = new Date().toLocaleString('sv-SE').replace('T', ' ');
+        const newReply = {
+            author: this.currentUser.username, author_name: this.currentUser.chinese_name,
+            role: this.currentUser.role, timestamp: now, content: content
+        };
+
+        const reportRef = db.collection('reports').doc(this.selectedReportId);
+        await reportRef.update({
+            replies: firebase.firestore.FieldValue.arrayUnion(newReply),
+            last_update_time: now
+        });
+        
+        await this.logAdminAction('新增回覆', `內容：${content}`);
+        document.getElementById('new-reply').value = '';
+    },
+
+    promptForStatusUpdate() {
+        const newStatus = document.getElementById('update-status').value;
+        const r = this.allReports[this.selectedReportId];
+        if (newStatus === r.status) return alert("狀態未更改，已取消操作。"); 
+
+        if (newStatus === '已結案') {
+            document.getElementById('pwd-confirm-msg').innerText = `將狀態變更為「已結案」需要密碼授權`;
+            document.getElementById('confirm-pwd-input').value = '';
+            this.pendingAction = () => this.commitStatusUpdate(newStatus);
+            this.showModal('modal-pwd-confirm');
+        } else {
+            this.commitStatusUpdate(newStatus);
+        }
+    },
+
+    async commitStatusUpdate(newStatus) {
+        const now = new Date().toLocaleString('sv-SE').replace('T', ' ');
+        const rRef = db.collection('reports').doc(this.selectedReportId);
+        const oldStatus = this.allReports[this.selectedReportId].status;
+
+        const updateData = {
+            status: newStatus,
+            last_update_time: now,
+            status_updates: firebase.firestore.FieldValue.arrayUnion({timestamp: now, status: newStatus})
+        };
+        
+        if (newStatus === '已結案') updateData.completion_timestamp = now;
+
+        await rRef.update(updateData);
+        await this.logAdminAction('變更狀態', `從 [${oldStatus}] 變更為 [${newStatus}]`);
+        
+        alert("✅ 狀態更新成功！");
+    },
+
+    promptDeleteReport() {
+        document.getElementById('pwd-confirm-msg').innerText = `警告：將永久刪除 ${this.selectedReportId}，請輸入密碼確認。`;
+        document.getElementById('confirm-pwd-input').value = '';
+        this.pendingAction = async () => {
+            const rId = this.selectedReportId;
+            await this.logAdminAction('刪除單據', `徹底刪除了報修單：${rId}`);
+            await db.collection('reports').doc(rId).delete();
+            alert(`✅ 單號 ${rId} 已成功刪除！`);
+            this.hideModal('modal-detail');
+        };
+        this.showModal('modal-pwd-confirm');
+    },
+
+    executePwdAction() {
+        const pwd = document.getElementById('confirm-pwd-input').value;
+        if (pwd !== this.currentUser.password) return alert("❌ 密碼錯誤，授權失敗！");
+        this.hideModal('modal-pwd-confirm');
+        if (this.pendingAction) { this.pendingAction(); this.pendingAction = null; }
+    },
+
+    renderAccounts() {
+        const tbody = document.getElementById('accounts-body');
+        tbody.innerHTML = '';
+        
+        Object.keys(this.allUsers).forEach(u => {
+            const user = this.allUsers[u];
+            const isSuperAdmin = u === 'admin';
+            
+            let roleSelect = `<select onchange="app.changeUserRole('${u}', this.value)" ${isSuperAdmin ? 'disabled' : ''} style="margin:0; padding:6px; font-size:13px;">
+                <option value="USER" ${user.role==='USER'?'selected':''}>USER (一般)</option>
+                <option value="MIS" ${user.role==='MIS'?'selected':''}>MIS (資訊)</option>
+                <option value="GA" ${user.role==='GA'?'selected':''}>GA (總務)</option>
+            </select>`;
+
+            let delBtn = isSuperAdmin ? '-' : `<button class="danger" style="padding:6px 10px; margin:0; font-size:13px;" onclick="app.deleteAccount('${u}')">刪除</button>`;
+            const avatarThumb = user.avatar ? `<img src="${user.avatar}" style="width:35px; height:35px; border-radius:50%; object-fit:cover;">` : `<div style="width:35px; height:35px; border-radius:50%; background:var(--apple-blue); color:white; display:flex; justify-content:center; align-items:center; font-weight:bold;">${user.chinese_name.charAt(0)}</div>`;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${avatarThumb}</td><td><strong>${u}</strong></td><td>${user.chinese_name}</td><td>${roleSelect}</td><td>${delBtn}</td>`;
+            tbody.appendChild(tr);
+        });
+    },
+
+    renderLogs() {
+        const tbody = document.getElementById('logs-body');
+        tbody.innerHTML = '';
+        
+        const logEntries = Object.values(this.allLogs).sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        logEntries.forEach(log => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><span style="font-size:12px; color:var(--apple-text-light)">${log.timestamp.substring(5,16)}</span></td><td><strong>${log.admin_user}</strong></td><td><span class="badge" style="background:var(--apple-blue); color:white;">${log.report_id}</span></td><td>${log.action}</td><td>${log.details}</td>`;
+            tbody.appendChild(tr);
+        });
+    },
+
+    async changeUserRole(username, newRole) {
+        await db.collection('users').doc(username).update({ role: newRole });
+        alert(`✅ 已將 ${username} 權限變更為 ${newRole}`);
+    },
+
+    async deleteAccount(username) {
+        if (username === 'admin') return alert("❌ 無法刪除最高管理員！");
+        if (confirm(`確定要刪除帳號 ${username} 嗎？\n該帳號將永久無法登入。`)) {
+            await db.collection('users').doc(username).delete();
+            alert("✅ 帳號已成功刪除");
+        }
+    },
+
+    showModal(id) { document.getElementById(id).classList.add('active'); },
+    hideModal(id) { document.getElementById(id).classList.remove('active'); }
+};
+
+window.onload = () => app.init();
+</script>
+</body>
+</html>
