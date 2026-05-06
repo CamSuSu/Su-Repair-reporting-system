@@ -381,35 +381,48 @@ const app = {
         this.unsubscribeListeners = [unsubUsers, unsubReports, unsubLogs];
     },
 
+    // 檢查是否有預設管理員 (加入錯誤捕捉)
     async checkInitialAdmin() {
-        const adminDoc = await db.collection('users').doc('admin').get();
-        if (!adminDoc.exists) {
-            await db.collection('users').doc('admin').set({
-                password: "This1234", role: "admin", chinese_name: "最高管理員", sessions: [], avatar: null
-            });
+        try {
+            const adminDoc = await db.collection('users').doc('admin').get();
+            if (!adminDoc.exists) {
+                await db.collection('users').doc('admin').set({
+                    password: "This1234", role: "admin", chinese_name: "最高管理員", sessions: [], avatar: null
+                });
+            }
+        } catch (error) {
+            console.error("初始化管理員失敗，請檢查 Firestore 規則:", error);
         }
     },
 
     setLoading(isLoading) { document.getElementById('global-loader').classList.toggle('hidden', !isLoading); },
     toggleAuthMode() { document.getElementById('form-login').classList.toggle('hidden'); document.getElementById('form-register').classList.toggle('hidden'); },
 
+    // 登入功能 (加入錯誤捕捉防死當)
     async login() {
         const u = document.getElementById('login-username').value.trim();
         const p = document.getElementById('login-password').value;
         if (!u || !p) return alert("請輸入帳號密碼");
         
         this.setLoading(true);
-        const doc = await db.collection('users').doc(u).get();
-        this.setLoading(false);
+        try {
+            const doc = await db.collection('users').doc(u).get();
+            this.setLoading(false);
 
-        if (doc.exists && doc.data().password === p) {
-            this.currentUser = { username: u, ...doc.data() };
-            this.showDashboard();
-        } else {
-            alert("❌ 帳號或密碼錯誤！");
+            if (doc.exists && doc.data().password === p) {
+                this.currentUser = { username: u, ...doc.data() };
+                this.showDashboard();
+            } else {
+                alert("❌ 帳號或密碼錯誤！");
+            }
+        } catch (error) {
+            this.setLoading(false);
+            console.error("登入錯誤:", error);
+            alert(`❌ 無法連線到資料庫！\n錯誤原因：${error.message}\n(請確認您的 Firebase Firestore 規則是否已設為 allow read, write: if true;)`);
         }
     },
 
+    // 註冊功能 (加入錯誤捕捉防死當)
     async register() {
         const u = document.getElementById('reg-username').value.trim();
         const p = document.getElementById('reg-password').value;
@@ -418,16 +431,22 @@ const app = {
         if(u.length < 3 || p.length < 4 || !n) return alert("❌ 格式錯誤：帳號至少3碼，密碼至少4碼，姓名不可為空。");
         
         this.setLoading(true);
-        const doc = await db.collection('users').doc(u).get();
-        if (doc.exists) {
-            this.setLoading(false);
-            return alert("❌ 此帳號已存在！");
-        }
+        try {
+            const doc = await db.collection('users').doc(u).get();
+            if (doc.exists) {
+                this.setLoading(false);
+                return alert("❌ 此帳號已存在！");
+            }
 
-        await db.collection('users').doc(u).set({ password: p, role: "USER", chinese_name: n, sessions: [], avatar: null });
-        this.setLoading(false);
-        alert("✅ 註冊成功，請登入！");
-        this.toggleAuthMode();
+            await db.collection('users').doc(u).set({ password: p, role: "USER", chinese_name: n, sessions: [], avatar: null });
+            this.setLoading(false);
+            alert("✅ 註冊成功，請登入！");
+            this.toggleAuthMode();
+        } catch (error) {
+            this.setLoading(false);
+            console.error("註冊錯誤:", error);
+            alert(`❌ 註冊失敗！\n錯誤原因：${error.message}\n(請確認您的 Firebase Firestore 規則設定)`);
+        }
     },
 
     logout() {
