@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SU.線上報修系統Pro</title>
+    <title>SU.線上報修系統 Pro Max</title>
     
     <!-- PWA 必備標籤 -->
     <link rel="manifest" href="manifest.json">
@@ -132,8 +132,8 @@
     <!-- 1. 登入/註冊畫面 -->
     <div id="login-view">
         <div class="login-box glass">
-            <h1>SU.線上報修系統 <span style="color:var(--apple-blue)">Cloud</span></h1>
-            <p style="color:var(--apple-text-light); margin-bottom:20px; font-size: 14px;">企業雲端版</p>
+            <h1>SU.線上報修系統 <span style="color:var(--apple-blue)">PWA</span></h1>
+            <p style="color:var(--apple-text-light); margin-bottom:20px; font-size: 14px;">企業級雲端版</p>
             
             <div id="form-login">
                 <input type="text" id="login-username" placeholder="帳號" onkeypress="if(event.key==='Enter') app.login()" autocorrect="off" autocapitalize="off">
@@ -381,18 +381,9 @@ const app = {
         this.unsubscribeListeners = [unsubUsers, unsubReports, unsubLogs];
     },
 
-    // 檢查是否有預設管理員 (加入錯誤捕捉)
+    /// 安全性修改：不再於程式碼中自動建立管理員，改由 Firebase 後台手動建立初始帳號
     async checkInitialAdmin() {
-        try {
-            const adminDoc = await db.collection('users').doc('admin').get();
-            if (!adminDoc.exists) {
-                await db.collection('users').doc('admin').set({
-                    password: "This1234", role: "admin", chinese_name: "最高管理員", sessions: [], avatar: null
-                });
-            }
-        } catch (error) {
-            console.error("初始化管理員失敗，請檢查 Firestore 規則:", error);
-        }
+        console.log("系統安全檢查：請確保 Firestore 資料庫已手動建立管理員帳號。");
     },
 
     setLoading(isLoading) { document.getElementById('global-loader').classList.toggle('hidden', !isLoading); },
