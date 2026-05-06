@@ -9,14 +9,7 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "./Su.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "images/Su.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "src": "./Su.ico",
+      "sizes": "96x96",
+      "type": "image/ico"
     }
-  ]
-}
