@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SU.線上報修系統Pro </title>
+    <title>SU.線上報修系統 Cloud</title>
     
     <!-- PWA 必備標籤 -->
     <link rel="manifest" href="manifest.json">
@@ -53,6 +53,7 @@
         
         button { width: 100%; padding: 14px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: var(--apple-blue); color: white; margin-bottom: 10px; }
         button:hover { background: var(--apple-blue-hover); transform: scale(0.98); }
+        button:disabled { cursor: not-allowed; transform: none; }
         button.secondary { background: rgba(0,0,0,0.05); color: var(--apple-text); }
         button.secondary:hover { background: rgba(0,0,0,0.1); }
         button.danger { background: var(--apple-red); color: white; }
@@ -179,7 +180,7 @@
         <div class="main-content">
             <div class="header">
                 <h2 id="page-title">我的報修單</h2>
-                <button onclick="app.showModal('modal-submit')" style="width:auto; border-radius: 20px; padding: 10px 20px;">+ 申請新報修單</button>
+                <button id="btn-new-report" onclick="app.showModal('modal-submit')" style="width:auto; border-radius: 20px; padding: 10px 20px;">+ 申請新報修單</button>
             </div>
 
             <div class="toolbar glass">
@@ -221,9 +222,9 @@
             </div>
 
             <div class="pagination" style="display: flex; justify-content: center; gap: 15px; margin-top: 20px;">
-                <button class="secondary" onclick="app.prevPage()">上一頁</button>
+                <button class="secondary" onclick="app.prevPage()" style="width:auto; padding:10px 20px;">上一頁</button>
                 <span id="page-info" style="font-weight: 500; align-self: center;">第 1 頁</span>
-                <button class="secondary" onclick="app.nextPage()">下一頁</button>
+                <button class="secondary" onclick="app.nextPage()" style="width:auto; padding:10px 20px;">下一頁</button>
             </div>
         </div>
     </div>
@@ -276,7 +277,7 @@
                             <option value="已結案">已結案</option>
                             <option value="無法處理">無法處理</option>
                         </select>
-                        <button onclick="app.promptForStatusUpdate()" style="width:auto; margin-bottom:0; flex:1;">更新狀態</button>
+                        <button id="btn-update-status" onclick="app.promptForStatusUpdate()" style="width:auto; margin-bottom:0; flex:1;">更新狀態</button>
                     </div>
                 </div>
                 <label style="font-size: 13px; font-weight: 600; color:var(--apple-text-light);">新增留言 / 補充說明</label>
@@ -381,7 +382,6 @@ const app = {
         this.unsubscribeListeners = [unsubUsers, unsubReports, unsubLogs];
     },
 
-    /// 安全性修改：不再於程式碼中自動建立管理員，改由 Firebase 後台手動建立初始帳號
     async checkInitialAdmin() {
         console.log("系統安全檢查：請確保 Firestore 資料庫已手動建立管理員帳號。");
     },
@@ -389,7 +389,7 @@ const app = {
     setLoading(isLoading) { document.getElementById('global-loader').classList.toggle('hidden', !isLoading); },
     toggleAuthMode() { document.getElementById('form-login').classList.toggle('hidden'); document.getElementById('form-register').classList.toggle('hidden'); },
 
-    // 登入功能 (加入錯誤捕捉防死當)
+    // 登入功能
     async login() {
         const u = document.getElementById('login-username').value.trim();
         const p = document.getElementById('login-password').value;
@@ -409,11 +409,11 @@ const app = {
         } catch (error) {
             this.setLoading(false);
             console.error("登入錯誤:", error);
-            alert(`❌ 無法連線到資料庫！\n錯誤原因：${error.message}\n(請確認您的 Firebase Firestore 規則是否已設為 allow read, write: if true;)`);
+            alert(`❌ 無法連線到資料庫！\n錯誤原因：${error.message}`);
         }
     },
 
-    // 註冊功能 (加入錯誤捕捉防死當)
+    // 註冊功能
     async register() {
         const u = document.getElementById('reg-username').value.trim();
         const p = document.getElementById('reg-password').value;
@@ -436,7 +436,7 @@ const app = {
         } catch (error) {
             this.setLoading(false);
             console.error("註冊錯誤:", error);
-            alert(`❌ 註冊失敗！\n錯誤原因：${error.message}\n(請確認您的 Firebase Firestore 規則設定)`);
+            alert(`❌ 註冊失敗！\n錯誤原因：${error.message}`);
         }
     },
 
@@ -456,11 +456,16 @@ const app = {
         const role = this.currentUser.role;
         const isAdminType = ['admin', 'MIS', 'GA'].includes(role);
         
+        // 依照角色限制 UI 功能顯示：管理員無申請新報修單與我的報修功能
+        document.getElementById('menu-my-reports').classList.toggle('hidden', isAdminType);
         document.getElementById('menu-all-reports').classList.toggle('hidden', !isAdminType);
+        document.getElementById('btn-new-report').classList.toggle('hidden', isAdminType);
+
         document.getElementById('menu-accounts').classList.toggle('hidden', role !== 'admin');
         document.getElementById('menu-logs').classList.toggle('hidden', role !== 'admin');
         document.getElementById('filter-type').classList.toggle('hidden', role !== 'admin');
 
+        // 一般使用者進「我的報修」，管理員強制進入「管理報修」
         this.switchTab(role === 'USER' ? 'my-reports' : 'all-reports');
     },
 
@@ -561,11 +566,21 @@ const app = {
         const fType = document.getElementById('filter-type').value;
 
         this.filteredReports = reportsArr.filter(r => {
-            if (this.currentTab === 'my-reports' && r.username !== this.currentUser.username) return false;
+            const reportUserRole = this.allUsers[r.username] ? this.allUsers[r.username].role : 'USER';
+
+            if (this.currentTab === 'my-reports') {
+                if (r.username !== this.currentUser.username) return false;
+            }
+
             if (this.currentTab === 'all-reports') {
+                // 管理員只能查看「一般使用者」的單
+                if (reportUserRole !== 'USER') return false;
+                
+                // 類型隔離權限控制
                 if (role === 'MIS' && r.type !== '資訊類') return false;
                 if (role === 'GA' && r.type !== '行政總務類') return false;
             }
+
             if (fYear !== '全部' && !r.timestamp.startsWith(fYear)) return false;
             if (fStatus !== '全部' && r.status !== fStatus) return false;
             if (fType !== '全部' && r.type !== fType) return false;
@@ -686,11 +701,28 @@ const app = {
 
         const updateSec = document.getElementById('admin-update-section');
         const delBtn = document.getElementById('btn-delete-report');
+        const updateStatusDropdown = document.getElementById('update-status');
+        const updateStatusBtn = document.getElementById('btn-update-status');
         
+        // 針對管理員顯示更新狀態區塊，並處理「已結案」後的鎖定防護
         if (['admin', 'MIS', 'GA'].includes(this.currentUser.role)) {
             updateSec.classList.remove('hidden');
-            document.getElementById('update-status').value = r.status;
-        } else { updateSec.classList.add('hidden'); }
+            updateStatusDropdown.value = r.status;
+            
+            if (r.status === '已結案' && this.currentUser.role !== 'admin') {
+                updateStatusDropdown.disabled = true;
+                updateStatusBtn.disabled = true;
+                updateStatusBtn.style.opacity = '0.5';
+                updateStatusBtn.innerText = '已結案 (權限鎖定)';
+            } else {
+                updateStatusDropdown.disabled = false;
+                updateStatusBtn.disabled = false;
+                updateStatusBtn.style.opacity = '1';
+                updateStatusBtn.innerText = '更新狀態';
+            }
+        } else { 
+            updateSec.classList.add('hidden'); 
+        }
 
         if (this.currentUser.role === 'admin') delBtn.classList.remove('hidden');
         else delBtn.classList.add('hidden');
@@ -760,7 +792,7 @@ const app = {
         if (newStatus === r.status) return alert("狀態未更改，已取消操作。"); 
 
         if (newStatus === '已結案') {
-            document.getElementById('pwd-confirm-msg').innerText = `將狀態變更為「已結案」需要密碼授權`;
+            document.getElementById('pwd-confirm-msg').innerText = `將狀態變更為「已結案」需要您的帳號密碼授權`;
             document.getElementById('confirm-pwd-input').value = '';
             this.pendingAction = () => this.commitStatusUpdate(newStatus);
             this.showModal('modal-pwd-confirm');
@@ -786,6 +818,7 @@ const app = {
         await this.logAdminAction('變更狀態', `從 [${oldStatus}] 變更為 [${newStatus}]`);
         
         alert("✅ 狀態更新成功！");
+        this.openReportDetail(this.selectedReportId); // 更新重新渲染 UI 防護狀態
     },
 
     promptDeleteReport() {
@@ -803,6 +836,7 @@ const app = {
 
     executePwdAction() {
         const pwd = document.getElementById('confirm-pwd-input').value;
+        // 使用操作者本身的密碼做比對驗證
         if (pwd !== this.currentUser.password) return alert("❌ 密碼錯誤，授權失敗！");
         this.hideModal('modal-pwd-confirm');
         if (this.pendingAction) { this.pendingAction(); this.pendingAction = null; }
