@@ -5,17 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SU.線上報修系統 Cloud</title>
     
+    <!-- 網頁頁籤縮圖 (Favicon) - 讀取同目錄下的 Su.png -->
+    <link rel="icon" href="./Su.png" type="image/png">
+    
     <!-- PWA 必備標籤 -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#F2F2F7">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <!-- Apple iOS 裝置加入主畫面的圖示 - 讀取同目錄下的 Su.png -->
+    <link rel="apple-touch-icon" href="./Su.png">
 
     <!-- 引入 Firebase Web SDK (Compat 版本) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 
+    <style>
+        /* 下方保留您原有的所有 CSS 設定，完全不變動 */
     <style>
         :root {
             --apple-bg: #F2F2F7;
